@@ -10,38 +10,13 @@ from ClioMCP/firm_data/clio_client.py:update_matter_custom_field_values.
 """
 from __future__ import annotations
 
-import http.client
-import json
 from datetime import datetime, timezone
 
-from jh_clio_lib import clio_auth, clio_client, config
+from jh_clio_lib import clio_client, config
 from jh_clio_lib.exceptions import AmbiguousFieldError, FieldNotFoundError
 
 _CACHE_COLLECTION = "clio_manage_state"
 _CACHE_DOC = "custom_field_definitions"
-
-
-def _braces_get(path_with_query: str, *, _retry: bool = True) -> dict:
-    """GET via http.client directly — `requests` percent-encodes `{`/`}`, which Clio's
-    field sub-selection syntax (e.g. custom_field_values{id,value,custom_field}) needs
-    literal. Ported from ClioMCP/firm_data/clio_client.py:_braces_get. `path_with_query`
-    is relative to the API root (no /api/v4 prefix — added here)."""
-    token = clio_auth.get_clio_token()
-    conn = http.client.HTTPSConnection("app.clio.com", timeout=15)
-    full_path = f"/api/v4{path_with_query}"
-    try:
-        conn.request("GET", full_path, headers={"Authorization": f"Bearer {token}"})
-        resp = conn.getresponse()
-        body = resp.read()
-        status = resp.status
-    finally:
-        conn.close()
-    if status == 401 and _retry:
-        clio_auth.refresh_clio_token()
-        return _braces_get(path_with_query, _retry=False)
-    if status >= 400:
-        raise RuntimeError(f"Clio GET {path_with_query} -> {status}: {body[:500]!r}")
-    return json.loads(body)
 
 
 def _paginate(path: str, params: dict) -> list[dict]:
@@ -116,7 +91,7 @@ def _get_matter_custom_field_values(matter_id: int) -> list[dict]:
     """Raw custom_field_values for a matter: [{id, value, custom_field: {id, name}}, ...].
     id here is the VALUE INSTANCE id, custom_field.id is the DEFINITION id."""
     path = f"/matters/{matter_id}.json?fields=id,custom_field_values{{id,value,custom_field}}"
-    body = _braces_get(path)
+    body = clio_client.clio_braces_get(path)
     data = body.get("data") or {}
     return data.get("custom_field_values") or []
 
