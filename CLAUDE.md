@@ -53,17 +53,19 @@ See this project's row in `~/jh-knowledge/PROJECT_TRACKER.md` for the
 authoritative current status — don't let this section drift out of sync with
 it. If you update status here, update the tracker too, same session.
 
-As of 2026-07-19: v1 scaffolded and live-smoke-tested (Clio auth, Clio custom-field
-read/write, Lawmatics auth, Lawmatics custom-field write w/ GET-verify) — 20/20 mocked
-tests passing. Not yet consumed by ClioMCP or clio-hotstrings.
+As of 2026-07-20: v1 scaffolded and live-smoke-tested (Clio auth, Clio custom-field
+read/write, Lawmatics auth, Lawmatics custom-field write w/ GET-verify) — 22/22 mocked
+tests passing. Added `clio_matters.clio_list_matters()` (bulk paginated matter
+listing with braces field-selection) and promoted `clio_braces_get` to public on
+`clio_client` when `clio-hotstrings` needed them — the "second consumer" the design
+brief anticipated. `clio-hotstrings` now consumes this library (editable install);
+ClioMCP has not yet migrated.
 
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
   its own duplicated `clio_auth.py`/`clio_client.py`/`field_map.py` — deliberately
   deferred to a separate session (see PROJECT_TRACKER.md).
-- Ad Litem Clio custom field names/IDs (Name/Phone/Email) for clio-hotstrings v2 are
-  still unconfirmed — verify they exist before that project depends on them.
 - Lawmatics list/picklist-type custom fields: `lawmatics_update_custom_field`'s
   GET-verify doesn't yet resolve internal option ids back to labels (see the docstring
   in `lawmatics_client.py`) — no current consumer writes a list field, so this is
