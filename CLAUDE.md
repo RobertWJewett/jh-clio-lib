@@ -61,6 +61,13 @@ listing with braces field-selection) and promoted `clio_braces_get` to public on
 brief anticipated. `clio-hotstrings` now consumes this library (editable install);
 ClioMCP has not yet migrated.
 
+**Update 2026-07-21:** `clio_braces_get` got two resilience fixes, both surfaced by
+clio-hotstrings bulk-fetching ~1,550 Contact records for the first time (previously
+every consumer only ever called it once per matter, occasionally) — it now retries
+429/502/503/504 with backoff (honoring `Retry-After`) and retries connection-level
+failures (timeouts etc.), matching what `clio_request` already did. See
+`ClioLearningLog.md` §5 for the full incident/fix writeup.
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
