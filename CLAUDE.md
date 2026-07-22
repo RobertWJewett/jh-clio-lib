@@ -68,6 +68,14 @@ every consumer only ever called it once per matter, occasionally) — it now ret
 failures (timeouts etc.), matching what `clio_request` already did. See
 `ClioLearningLog.md` §5 for the full incident/fix writeup.
 
+**Update 2026-07-22:** added `clio_list_contacts()`, mirroring `clio_list_matters()`
+(shared pagination loop extracted into `_paginate_braces()`) — a **third** consumer,
+outside the original ClioMCP/clio-hotstrings pair: a one-time Clio contact
+phone-number-format backfill script in `jh-law-scripts/clio/clio_phone_backfill.py`,
+which needed to scan every Clio contact headlessly (that repo's own Clio config
+module always pops a blocking Tkinter dialog on startup, incompatible with a
+one-off script run from Claude Code). 28/28 mocked tests passing.
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
