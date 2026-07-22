@@ -1,4 +1,4 @@
-"""Bulk matter listing with braces field-selection support.
+"""Bulk matter/contact listing with braces field-selection support.
 
 Ported from email-processor/audit_matterkey.py:scan_clio_matters and
 maintain_clio_matterkeys.py's page_token pagination loop — the proven pattern for
@@ -15,18 +15,11 @@ from jh_clio_lib import clio_client
 _PAGE_LIMIT = 200
 
 
-def clio_list_matters(fields: str, *, query: str = "") -> list[dict]:
-    """GET /matters.json?fields=<fields> across all pages (page_token pagination).
-
-    `fields` may include Clio's brace sub-selection syntax (e.g.
-    "id,display_number,client{name},custom_field_values{id,value,custom_field}") —
-    passed through literally via clio_braces_get. Returns raw Clio matter rows
-    (dicts), unfiltered — callers narrow down to the fields they need.
-    """
+def _paginate_braces(resource: str, fields: str, *, query: str = "") -> list[dict]:
     rows: list[dict] = []
     next_token: str | None = None
     while True:
-        path = f"/matters.json?limit={_PAGE_LIMIT}&fields={fields}"
+        path = f"/{resource}.json?limit={_PAGE_LIMIT}&fields={fields}"
         if query:
             path += f"&query={query}"
         if next_token:
@@ -40,3 +33,21 @@ def clio_list_matters(fields: str, *, query: str = "") -> list[dict]:
         if not next_token:
             break
     return rows
+
+
+def clio_list_matters(fields: str, *, query: str = "") -> list[dict]:
+    """GET /matters.json?fields=<fields> across all pages (page_token pagination).
+
+    `fields` may include Clio's brace sub-selection syntax (e.g.
+    "id,display_number,client{name},custom_field_values{id,value,custom_field}") —
+    passed through literally via clio_braces_get. Returns raw Clio matter rows
+    (dicts), unfiltered — callers narrow down to the fields they need.
+    """
+    return _paginate_braces("matters", fields, query=query)
+
+
+def clio_list_contacts(fields: str, *, query: str = "") -> list[dict]:
+    """GET /contacts.json?fields=<fields> across all pages — same pattern as
+    clio_list_matters, for scripts that need to scan ALL contacts (e.g. a
+    phone-number-format backfill), not just contacts.json's own `query` filter."""
+    return _paginate_braces("contacts", fields, query=query)
