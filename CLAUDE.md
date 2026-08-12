@@ -76,6 +76,22 @@ which needed to scan every Clio contact headlessly (that repo's own Clio config
 module always pops a blocking Tkinter dialog on startup, incompatible with a
 one-off script run from Claude Code). 28/28 mocked tests passing.
 
+**Update 2026-08-12:** added `lawmatics_collections.py` — read access to
+Lawmatics' new Collections API (v1.22.0+), a firm-defined repeatable-data
+object distinct from Custom Fields, first touched anywhere in this platform.
+`lawmatics_list_collections`/`lawmatics_get_collection`/
+`lawmatics_list_collection_items`/`lawmatics_get_collection_item`, plus
+`resolve_collection_item_values()` which flattens an item's own inline
+`name`/`formatted_value` into a plain dict (confirmed live that no separate
+schema join is actually needed for the common case — see
+`ClioLearningLog.md` §7). Built on the existing `lawmatics_request()`
+auth/retry primitive, no new HTTP code. Live-verified against real data on
+Lawmatics Prospect `18634852` (a "Real Property" + two "Financial Accounts"
+collection items) — scoped from `clio-lm-xfer`, with an eye toward eventually
+feeding ClioMCP's estate-inventory recipe. Read-only so far — write methods
+(create/update/delete_collection_item) deliberately deferred. 36/36 mocked
+tests passing.
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
@@ -85,3 +101,16 @@ one-off script run from Claude Code). 28/28 mocked tests passing.
   GET-verify doesn't yet resolve internal option ids back to labels (see the docstring
   in `lawmatics_client.py`) — no current consumer writes a list field, so this is
   deferred until one does.
+- Lawmatics Collections write methods (create/update/delete_collection_item) not yet
+  built — next step once a safe test-write target is confirmed.
+- **The actual goal (Robert's framing, 2026-08-12):** Lawmatics has no built-in way to
+  merge Collections data into a Word document at all — this has to be done
+  programmatically on our side. The plan is to read each Collection's items via
+  `lawmatics_collections.py` and populate the *corresponding table* in ClioMCP's
+  estate-inventory recipe (`full_inventory.py`), one table per collection
+  name/type (e.g. "Real Property" → the real-property schedule table, "Financial
+  Accounts" → the accounts schedule table). This needs a genuinely new pattern in
+  ClioMCP — a real repeating-row Jinja `{% for %}` loop in a docxtpl template; that
+  repo currently only flattens multi-item data into `<br>`-joined text, never a true
+  table loop. Not started — see `PROJECT_TRACKER.md`'s jh-clio-lib section for the
+  next-action writeup.
