@@ -92,6 +92,18 @@ feeding ClioMCP's estate-inventory recipe. Read-only so far — write methods
 (create/update/delete_collection_item) deliberately deferred. 36/36 mocked
 tests passing.
 
+**Same day, follow-up:** added `matterkey_index.py` — reads the shared
+`clio_matterkey_index` Firestore collection (built nightly by
+`email-processor/deploy_matterkey_index/build_matterkey_lm_index.py`, see
+`MatterKey.md` §6a) to resolve a Clio matter id to its Lawmatics prospect id,
+the missing piece needed to actually call `lawmatics_collections` from a
+Clio-side consumer. `get_lm_prospect_id_for_matter()`/
+`get_matterkey_index_entry()`, mocked via the existing `fake_firestore`
+fixture. This is what ClioMCP's `deed_engine/lawmatics_collections_data.py`
+(new the same day) uses to wire Lawmatics Collection data into the
+PR-Inventory-Full recipe's Schedule A/B tables — see that repo's own
+docstrings for the full writeup. 40/40 mocked tests passing.
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
