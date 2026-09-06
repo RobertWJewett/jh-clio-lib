@@ -22,6 +22,7 @@ def _paginate_braces(
     query: str = "",
     updated_since: str | None = None,
     created_since: str | None = None,
+    extra_params: dict[str, str] | None = None,
 ) -> list[dict]:
     rows: list[dict] = []
     next_token: str | None = None
@@ -33,6 +34,8 @@ def _paginate_braces(
             path += f"&updated_since={updated_since}"
         if created_since:
             path += f"&created_since={created_since}"
+        for key, value in (extra_params or {}).items():
+            path += f"&{key}={value}"
         if next_token:
             path += f"&page_token={next_token}"
         body = clio_client.clio_braces_get(path)
@@ -53,6 +56,7 @@ def clio_list_resource(
     query: str = "",
     updated_since: str | None = None,
     created_since: str | None = None,
+    extra_params: dict[str, str] | None = None,
 ) -> list[dict]:
     """GET /<resource>.json?fields=<fields> across all pages (page_token pagination),
     for any Clio v4 list endpoint -- e.g. "users", "practice_areas", "custom_fields",
@@ -66,11 +70,19 @@ def clio_list_resource(
 
     `updated_since`/`created_since` (ISO-8601, e.g. "2026-09-01T00:00:00Z") map to
     Clio's own incremental-filter query params -- confirmed present on every list
-    endpoint checked so far (ClioLearningLog.md §2, 2026-09-05). Returns raw Clio
-    rows (dicts), unfiltered -- callers narrow down to the fields they need.
+    endpoint checked so far (ClioLearningLog.md §2, 2026-09-05).
+
+    `extra_params` covers resource-specific required/optional filters not common
+    enough to deserve their own keyword -- e.g. `/notes.json` unconditionally
+    requires `type` (`Matter` or `Contact`) with no way to fetch both in one call
+    (ClioLearningLog.md §2, 2026-09-05); pass `extra_params={"type": "Matter"}`.
+
+    Returns raw Clio rows (dicts), unfiltered -- callers narrow down to the fields
+    they need.
     """
     return _paginate_braces(
         resource, fields, query=query, updated_since=updated_since, created_since=created_since,
+        extra_params=extra_params,
     )
 
 

@@ -66,6 +66,20 @@ def test_clio_list_resource_passes_since_filters_and_resource_name(monkeypatch):
     assert "created_since=2026-08-01T00:00:00Z" in captured["path"]
 
 
+def test_clio_list_resource_passes_extra_params(monkeypatch):
+    captured = {}
+
+    def _fake_braces_get(path):
+        captured["path"] = path
+        return {"data": [], "meta": {}}
+
+    monkeypatch.setattr(clio_client, "clio_braces_get", _fake_braces_get)
+
+    clio_matters.clio_list_resource("notes", "id,subject", extra_params={"type": "Matter"})
+
+    assert "type=Matter" in captured["path"]
+
+
 def test_clio_list_contacts_paginates_via_page_token(monkeypatch):
     pages = [
         {
