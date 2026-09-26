@@ -104,6 +104,21 @@ fixture. This is what ClioMCP's `deed_engine/lawmatics_collections_data.py`
 PR-Inventory-Full recipe's Schedule A/B tables — see that repo's own
 docstrings for the full writeup. 40/40 mocked tests passing.
 
+**2026-09-26: write support added** — `lawmatics_create_collection_item`/
+`lawmatics_delete_collection_item`, closing out the "deferred until a safe
+test-write target is confirmed" note below. Confirmed live against the
+dedicated test record (Prospect `18634852`) rather than assumed from vendor
+docs, and two real gotchas found doing so: the `POST /collection_items` body
+is flat (not JSON:API-wrapped like the read endpoints), and a `currency`
+field's write value must be **raw cents as an integer** — a decimal string
+like `"1234.56"` is silently truncated at the decimal point and misread as
+cents (stored as `$12.34`, no error). `lawmatics_create_collection_item`
+GET-verifies its own write, same reasoning as `lawmatics_update_custom_field`;
+delete is a real delete (confirmed via 404 read-back), no GET-verify needed
+there. Driven by ClioMCP's need to migrate legacy free-text inventory fields
+into real Collection items across a batch of Probate/Heirship matters — see
+ClioMCP's own CLAUDE.md for that effort. 46/46 mocked tests passing.
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of
@@ -113,8 +128,9 @@ docstrings for the full writeup. 40/40 mocked tests passing.
   GET-verify doesn't yet resolve internal option ids back to labels (see the docstring
   in `lawmatics_client.py`) — no current consumer writes a list field, so this is
   deferred until one does.
-- Lawmatics Collections write methods (create/update/delete_collection_item) not yet
-  built — next step once a safe test-write target is confirmed.
+- Lawmatics Collections write methods: create/delete built 2026-09-26 (see dated entry
+  above). `update_collection_item` still not built — no consumer has needed an in-place
+  edit yet (ClioMCP's migration only ever creates new items, never edits existing ones).
 - **The actual goal (Robert's framing, 2026-08-12):** Lawmatics has no built-in way to
   merge Collections data into a Word document at all — this has to be done
   programmatically on our side. The plan is to read each Collection's items via

@@ -4,6 +4,7 @@ import pytest
 import responses
 
 from jh_clio_lib import config, lawmatics_auth, lawmatics_collections as lc
+from jh_clio_lib.exceptions import LawmaticsWriteUnconfirmedError
 
 
 @pytest.fixture(autouse=True)
@@ -147,3 +148,65 @@ def test_resolve_collection_item_values_unknown_field_id_kept_not_dropped():
     ]}
 
     assert lc.resolve_collection_item_values(item) == {"field_999": "orphaned"}
+
+
+@responses.activate
+def test_create_collection_item_sends_flat_body_and_verifies_readback():
+    created_attrs = {
+        "collection_id": 846, "contactable_type": "Prospect", "contactable_id": 18634852,
+        "custom_field_values": [
+            {"id": "165401777", "custom_field_id": "913632", "value": "123 Test Ln"},
+            {"id": "165401779", "custom_field_id": "913634", "value": 123456},
+        ],
+    }
+    responses.add(
+        responses.POST, f"{config.LAWMATICS_BASE}/collection_items",
+        json={"data": {"id": "12692", "attributes": created_attrs}},
+        status=201,
+    )
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/collection_items/12692",
+        json={"data": {"id": "12692", "attributes": created_attrs}},
+        status=200,
+    )
+
+    row = lc.lawmatics_create_collection_item("Prospect", 18634852, 846, {"913632": "123 Test Ln", "913634": 123456})
+
+    assert row["id"] == "12692"
+    sent_body = responses.calls[0].request.body
+    assert b"Prospect" in sent_body and b"846" in sent_body
+
+
+@responses.activate
+def test_create_collection_item_raises_when_readback_mismatches():
+    created_attrs = {
+        "collection_id": 846, "contactable_type": "Prospect", "contactable_id": 18634852,
+        "custom_field_values": [{"id": "165401777", "custom_field_id": "913632", "value": "wrong value"}],
+    }
+    responses.add(
+        responses.POST, f"{config.LAWMATICS_BASE}/collection_items",
+        json={"data": {"id": "12692", "attributes": created_attrs}},
+        status=201,
+    )
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/collection_items/12692",
+        json={"data": {"id": "12692", "attributes": created_attrs}},
+        status=200,
+    )
+
+    with pytest.raises(LawmaticsWriteUnconfirmedError):
+        lc.lawmatics_create_collection_item("Prospect", 18634852, 846, {"913632": "123 Test Ln"})
+
+
+@responses.activate
+def test_delete_collection_item():
+    responses.add(
+        responses.DELETE, f"{config.LAWMATICS_BASE}/collection_items/12692",
+        json={"data": {"id": "12692", "attributes": {"custom_field_values": []}}},
+        status=200,
+    )
+
+    lc.lawmatics_delete_collection_item(12692)
+
+    assert len(responses.calls) == 1
+    assert responses.calls[0].request.method == "DELETE"
