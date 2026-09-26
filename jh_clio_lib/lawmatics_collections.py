@@ -89,12 +89,21 @@ def lawmatics_list_collection_items(
 
     Each row: {id, contactable_type, contactable_id, collection_id,
     custom_field_values: [{id, custom_field_id, value, formatted_value}, ...]}.
-    """
+
+    Bug fixed 2026-09-26, found live against real data: `lawmatics_list_collections`/
+    `lawmatics_get_collection` return a collection's own `id` as a **string** (JSON:API's
+    resource-id convention), but a collection_item's own `collection_id` attribute comes
+    back as a real **int**. Comparing them with bare `==` silently matched nothing for
+    any caller that resolved `collection_id` via a collection-name lookup (the normal
+    path — e.g. `deed_engine.lawmatics_collections_data.get_matter_collection_items`)
+    rather than a hardcoded int literal, which is exactly why this went unnoticed since
+    the 2026-08-12 build: every ad-hoc manual test happened to pass a literal int.
+    Compares both sides as `str()` now, immune to either side's actual type."""
     params = {"filter_by": "contactable_id", "filter_on": contactable_id, "filter_with": _EQ}
     rows = _paginate("/collection_items", params)
     rows = [r for r in rows if r.get("contactable_type") == contactable_type]
     if collection_id is not None:
-        rows = [r for r in rows if r.get("collection_id") == collection_id]
+        rows = [r for r in rows if str(r.get("collection_id")) == str(collection_id)]
     return rows
 
 

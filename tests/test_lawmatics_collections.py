@@ -88,6 +88,30 @@ def test_list_collection_items_filters_by_contactable_type_and_collection_id():
 
 
 @responses.activate
+def test_list_collection_items_collection_id_filter_tolerates_str_vs_int_mismatch():
+    # Regression for the real 2026-09-26 bug: an item's own `collection_id`
+    # attribute is a genuine int, but a collection's own `id` (as resolved via
+    # lawmatics_list_collections/lawmatics_get_collection, JSON:API's string-id
+    # convention) is a str — callers that resolve collection_id by name lookup
+    # pass a str here, which must still match an int-valued item.
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/collection_items",
+        json={
+            "data": [{"id": 10, "attributes": {
+                "contactable_type": "Prospect", "contactable_id": 18634852,
+                "collection_id": 846, "custom_field_values": [],
+            }}],
+            "meta": {"total_pages": 1},
+        },
+        status=200,
+    )
+
+    rows = lc.lawmatics_list_collection_items("Prospect", 18634852, collection_id="846")
+
+    assert [r["id"] for r in rows] == [10]
+
+
+@responses.activate
 def test_get_collection_item():
     responses.add(
         responses.GET, f"{config.LAWMATICS_BASE}/collection_items/10",
