@@ -14,6 +14,7 @@ from jh_clio_lib.clio_matters import (
 )
 from jh_clio_lib.lawmatics_auth import get_lawmatics_token
 from jh_clio_lib.lawmatics_client import (
+    lawmatics_fetch_prospect_attributes,
     lawmatics_fetch_prospect_custom_fields,
     lawmatics_request,
     lawmatics_update_custom_field,
@@ -36,4 +37,5 @@ __all__ = [
     "lawmatics_request",
     "lawmatics_update_custom_field",
     "lawmatics_fetch_prospect_custom_fields",
+    "lawmatics_fetch_prospect_attributes",
 ]

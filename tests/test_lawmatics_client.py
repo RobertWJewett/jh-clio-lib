@@ -51,6 +51,24 @@ def test_update_custom_field_raises_on_readback_mismatch():
 
 
 @responses.activate
+def test_fetch_prospect_attributes_returns_native_attributes():
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/prospects/14639356",
+        json={"data": {"attributes": {
+            "name": "Melissa Perrin Bitar", "first_name": "Melissa", "informal_name": "Melissa",
+            "custom_fields": [{"id": 589927, "value": "Cheryl Grace Caruthers"}],
+        }}},
+        status=200,
+    )
+
+    result = lawmatics_client.lawmatics_fetch_prospect_attributes(14639356)
+
+    assert result["informal_name"] == "Melissa"
+    assert result["name"] == "Melissa Perrin Bitar"
+    assert "custom_fields" in result  # native attrs dict includes it too, callers just ignore it
+
+
+@responses.activate
 def test_fetch_prospect_custom_fields_returns_id_value_map():
     responses.add(
         responses.GET, f"{config.LAWMATICS_BASE}/prospects/14639356",

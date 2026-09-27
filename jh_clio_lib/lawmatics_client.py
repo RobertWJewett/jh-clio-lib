@@ -43,6 +43,20 @@ def lawmatics_request(method: str, path: str, **kwargs) -> requests.Response:
     return resp
 
 
+def lawmatics_fetch_prospect_attributes(prospect_id: int) -> dict[str, object]:
+    """Every NATIVE (non-custom-field) attribute on a Lawmatics prospect —
+    confirmed live 2026-09-27: ~50 keys including `name`, `first_name`,
+    `informal_name`, `case_blurb`, `birthdate`, etc. Distinct from
+    `lawmatics_fetch_prospect_custom_fields` below, which only extracts the
+    `custom_fields` array — these live directly on the prospect's own
+    top-level `attributes` dict instead. `informal_name` in particular
+    defaults to `first_name` unless a human has customized it (confirmed
+    against 3 real prospects)."""
+    resp = lawmatics_request("GET", f"/prospects/{prospect_id}", params={"fields": "all"})
+    resp.raise_for_status()
+    return (resp.json().get("data") or {}).get("attributes") or {}
+
+
 def lawmatics_fetch_prospect_custom_fields(prospect_id: int) -> dict[str, object]:
     """{str(field_id): value} for every custom field currently set on a Lawmatics
     prospect — the same `GET /prospects/{id}?fields=all` shape
