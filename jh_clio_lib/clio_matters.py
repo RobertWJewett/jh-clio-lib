@@ -8,7 +8,7 @@ percent-encoding the {}.
 """
 from __future__ import annotations
 
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from jh_clio_lib import clio_client
 
@@ -41,7 +41,14 @@ def _paginate_braces(
     while True:
         path = f"/{resource}.json?limit={_PAGE_LIMIT}&fields={fields}"
         if query:
-            path += f"&query={query}"
+            # quote() (not requests' own encoding — clio_braces_get is used
+            # specifically to avoid requests percent-encoding the {} in
+            # `fields`) — a multi-word query (e.g. a full name, "Anita
+            # Madison") otherwise puts a literal space in the URL, which
+            # http.client rejects outright as a control character, not just
+            # a wrong-but-tolerated request. Confirmed live 2026-09-26 via
+            # witness_lm_sync.lawmatics_to_clio searching contacts by name.
+            path += f"&query={quote(query)}"
         if updated_since:
             path += f"&updated_since={updated_since}"
         if since_floor:
@@ -49,7 +56,7 @@ def _paginate_braces(
         if order:
             path += f"&order={order}"
         for key, value in (extra_params or {}).items():
-            path += f"&{key}={value}"
+            path += f"&{key}={quote(str(value))}"
         if next_token:
             path += f"&page_token={next_token}"
         try:
@@ -139,3 +146,47 @@ def clio_list_contacts(fields: str, *, query: str = "") -> list[dict]:
     clio_list_matters, for scripts that need to scan ALL contacts (e.g. a
     phone-number-format backfill), not just contacts.json's own `query` filter."""
     return clio_list_resource("contacts", fields, query=query)
+
+
+def clio_list_matter_related_contacts(matter_id: int) -> list[dict]:
+    """GET /matters/{matter_id}/related_contacts.json — a matter's "Related
+    Contacts" (each row `{"id": <contact_id>, "name": ..., "relationship":
+    {"id": <relationship instance id>, "description": <free-text label>}}`).
+
+    This is a genuinely separate resource from everything else in this module
+    — NOT a `matters.json` sub-field (every guess at that, e.g. `fields=
+    relations{...}`/`contacts`/`related_contacts`, 400s with InvalidFields),
+    and NOT reachable via `/contacts.json?matter_id=<id>` either (that filter
+    is silently ignored — confirmed live, three different matter_ids all
+    returned the same contacts — see ClioLearningLog.md §14). `relationship.
+    description` is free text, not a fixed enum (real values seen: "Child",
+    "Spouse", "Witness", blank/null) — callers match on the specific string(s)
+    they need. `relationship.id` increases in the same order rows are
+    returned, a safe deterministic tie-break if a caller needs one (e.g.
+    "first" vs "second" same-labeled related contact).
+
+    Single-page GET, no `page_token` loop — a matter's own related-contacts
+    list is small in every real case seen so far; revisit with a real
+    _paginate_braces-based loop if a matter is ever found with enough related
+    contacts to paginate."""
+    body = clio_client.clio_braces_get(
+        f"/matters/{matter_id}/related_contacts.json?fields=id,name,relationship{{id,description}}"
+    )
+    return body.get("data") or []
+
+
+def clio_create_relationship(matter_id: int, contact_id: int, description: str) -> int:
+    """Link a Contact to a Matter as a Related Contact — confirmed live
+    2026-09-26 (ClioLearningLog.md §14), not guessed: this is a genuinely
+    separate top-level resource, `POST /relationships.json` (plural
+    "relationships"), NOT `POST /matters/{id}/related_contacts.json` (that
+    path 404s — it's read-only) and NOT a `related_contacts` array PATCHed
+    onto the matter itself (silently a no-op, confirmed live). `description`
+    is free text (real values seen: "Child", "Spouse", "Witness"), not a
+    fixed enum. Returns the new relationship's own id."""
+    resp = clio_client.clio_request(
+        "POST", "/relationships.json",
+        json={"data": {"description": description, "contact": {"id": contact_id}, "matter": {"id": matter_id}}},
+    )
+    resp.raise_for_status()
+    return resp.json()["data"]["id"]

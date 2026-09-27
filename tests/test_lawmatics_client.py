@@ -51,6 +51,33 @@ def test_update_custom_field_raises_on_readback_mismatch():
 
 
 @responses.activate
+def test_fetch_prospect_custom_fields_returns_id_value_map():
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/prospects/14639356",
+        json={"data": {"attributes": {"custom_fields": [
+            {"id": 589927, "value": "Cheryl Grace Caruthers"},
+            {"id": 589928, "value": "(832) 221-2242"},
+        ]}}},
+        status=200,
+    )
+
+    result = lawmatics_client.lawmatics_fetch_prospect_custom_fields(14639356)
+
+    assert result == {"589927": "Cheryl Grace Caruthers", "589928": "(832) 221-2242"}
+
+
+@responses.activate
+def test_fetch_prospect_custom_fields_empty_when_no_custom_fields():
+    responses.add(
+        responses.GET, f"{config.LAWMATICS_BASE}/prospects/99",
+        json={"data": {"attributes": {}}},
+        status=200,
+    )
+
+    assert lawmatics_client.lawmatics_fetch_prospect_custom_fields(99) == {}
+
+
+@responses.activate
 def test_none_value_sent_and_verified_as_empty_string():
     responses.add(
         responses.PATCH, f"{config.LAWMATICS_BASE}/prospects/99",

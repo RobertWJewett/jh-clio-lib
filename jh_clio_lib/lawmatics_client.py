@@ -43,6 +43,23 @@ def lawmatics_request(method: str, path: str, **kwargs) -> requests.Response:
     return resp
 
 
+def lawmatics_fetch_prospect_custom_fields(prospect_id: int) -> dict[str, object]:
+    """{str(field_id): value} for every custom field currently set on a Lawmatics
+    prospect — the same `GET /prospects/{id}?fields=all` shape
+    `lawmatics_update_custom_field`'s own read-back-verify step already uses,
+    exposed here as its own read so a caller can check "does this field
+    already have a value" BEFORE deciding whether to write it, without
+    duplicating that extraction logic."""
+    resp = lawmatics_request("GET", f"/prospects/{prospect_id}", params={"fields": "all"})
+    resp.raise_for_status()
+    attrs = (resp.json().get("data") or {}).get("attributes") or {}
+    return {
+        str(cf.get("id")): cf.get("value")
+        for cf in attrs.get("custom_fields", [])
+        if cf.get("id") is not None
+    }
+
+
 def lawmatics_update_custom_field(prospect_id: int, field_id: str, value: object) -> None:
     """PATCH a single Lawmatics prospect custom field via the `custom_fields` array
     format — **string** field ids only (the flat `custom_field_{id}` keys and integer

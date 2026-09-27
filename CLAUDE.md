@@ -119,6 +119,57 @@ there. Driven by ClioMCP's need to migrate legacy free-text inventory fields
 into real Collection items across a batch of Probate/Heirship matters — see
 ClioMCP's own CLAUDE.md for that effort. 46/46 mocked tests passing.
 
+**Same day, follow-up: found and fixed a real, previously-latent read bug
+while verifying the write above against ClioMCP's real matter, 01858-
+Yarbrough.** `lawmatics_list_collection_items`'s client-side `collection_id`
+filter compared a collection's own `id` (a JSON:API **string**, from
+`lawmatics_list_collections`/`lawmatics_get_collection`) against a collection
+item's own `collection_id` attribute (a real **int**) with bare `==` —
+silently matching zero items for any caller that resolves `collection_id` by
+name lookup rather than passing a hardcoded int literal. This is exactly the
+path every real consumer uses (`deed_engine.lawmatics_collections_data.
+get_matter_collection_items` resolves by collection *name*), so this API has
+silently never returned real data to any actual consumer since the
+2026-08-12 build — every prior "live confirmation" (including this repo's
+own 2026-08-12 entry above) happened to test with a literal int, masking it.
+Fixed by comparing both sides as `str()`; added a regression test
+reproducing the exact mismatch. 47/47 mocked tests passing. No real matter
+had actual Collection data before this was found (confirmed against two real
+Probate/Heirship matters), so no past production output was actually wrong
+— this was a latent bug, not a live-data incident.
+
+**2026-09-26: two small read-only additions, driven by clio-hotstrings' new
+`witness_lm_sync` feature (a Clio-witness-relation -> Lawmatics-prospect
+sync, unrelated to this repo's own witness-field work).**
+`clio_matters.clio_list_matter_related_contacts(matter_id)` — Clio's
+Related Contacts feature is NOT a `matters.json` sub-field (every guess at
+that 400s); the real resource is the nested
+`GET /matters/{id}/related_contacts.json?fields=id,name,relationship{id,
+description}` (see `ClioLearningLog.md` §14, added same session). Also
+found and documented there: `GET /contacts.json?matter_id=<id>` silently
+ignores that filter — same bug class as the already-known Lawmatics
+`prospects?contact_id=` bug, just on the Clio side this time.
+`lawmatics_client.lawmatics_fetch_prospect_custom_fields(prospect_id)` —
+the read counterpart to the existing single-field
+`lawmatics_update_custom_field`, exposing the same `GET /prospects/{id}?
+fields=all` extraction that write helper's own read-back-verify step
+already does internally, so a caller can check "does this field already
+have a value" before deciding whether to write it at all. Both exported
+from `jh_clio_lib/__init__.py`. 51/51 mocked tests passing (4 new).
+
+**Same day, follow-up: real bug found and fixed while running clio-hotstrings'
+new `lawmatics_to_clio` reverse sync for real.** `_paginate_braces`'s `query`
+param (and `extra_params` values) were never URL-encoded — every EXISTING
+consumer had only ever passed single-word queries ("Doe"), so this was latent
+until a real multi-word search (a witness's full name, "Anita Madison") put a
+literal space in the URL, which `http.client` (used deliberately instead of
+`requests`, to avoid `requests` percent-encoding the `{}` in `fields=`) rejects
+outright as a control character — a hard crash, not a wrong-but-tolerated
+request. Confirmed the crash happened before any real write in that run (see
+clio-hotstrings' own CLAUDE.md). Fixed with `urllib.parse.quote()` on just the
+query/extra_params values, leaving the braces syntax elsewhere in the path
+untouched. 57/57 mocked tests passing (1 new regression test).
+
 ## Open items specific to this project
 
 - ClioMCP migration: point ClioMCP's `firm_data/` module at this library instead of

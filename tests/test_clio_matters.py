@@ -44,6 +44,25 @@ def test_clio_list_matters_passes_query_and_fields(monkeypatch):
     assert "query=Doe" in captured["path"]
 
 
+def test_clio_list_contacts_url_encodes_a_multi_word_query(monkeypatch):
+    # Real bug, 2026-09-26: an unencoded space in the query value made
+    # http.client reject the URL outright ("URL can't contain control
+    # characters") — confirmed live via witness_lm_sync.lawmatics_to_clio
+    # searching Clio contacts by a witness's full name.
+    captured = {}
+
+    def _fake_braces_get(path):
+        captured["path"] = path
+        return {"data": [], "meta": {}}
+
+    monkeypatch.setattr(clio_client, "clio_braces_get", _fake_braces_get)
+
+    clio_matters.clio_list_contacts("id,name", query="Anita Madison")
+
+    assert " " not in captured["path"]
+    assert "query=Anita%20Madison" in captured["path"]
+
+
 def test_clio_list_resource_passes_since_filters_and_resource_name(monkeypatch):
     captured = {}
 
@@ -142,3 +161,69 @@ def test_clio_list_contacts_paginates_via_page_token(monkeypatch):
     assert [r["id"] for r in rows] == [1, 2]
     assert "/contacts.json" in calls[0]
     assert "page_token=abc" in calls[1]
+
+
+def test_clio_list_matter_related_contacts_hits_the_nested_endpoint(monkeypatch):
+    captured = {}
+
+    def _fake_braces_get(path):
+        captured["path"] = path
+        return {
+            "data": [
+                {"id": 1, "name": "Tina Marie Brown", "relationship": {"id": 100, "description": "Witness"}},
+                {"id": 2, "name": "Cheryl Grace Caruthers", "relationship": {"id": 101, "description": "Witness"}},
+            ],
+            "meta": {"paging": {}, "records": 2},
+        }
+
+    monkeypatch.setattr(clio_client, "clio_braces_get", _fake_braces_get)
+
+    rows = clio_matters.clio_list_matter_related_contacts(1843135850)
+
+    assert captured["path"] == (
+        "/matters/1843135850/related_contacts.json?fields=id,name,relationship{id,description}"
+    )
+    assert [r["name"] for r in rows] == ["Tina Marie Brown", "Cheryl Grace Caruthers"]
+    assert rows[0]["relationship"]["description"] == "Witness"
+
+
+def test_clio_list_matter_related_contacts_empty(monkeypatch):
+    monkeypatch.setattr(clio_client, "clio_braces_get", lambda path: {"data": [], "meta": {"paging": {}}})
+
+    assert clio_matters.clio_list_matter_related_contacts(1) == []
+
+
+class _FakeResponse:
+    def __init__(self, data):
+        self._data = data
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._data
+
+
+def test_clio_create_relationship_posts_correct_shape_and_returns_id(monkeypatch):
+    captured = {}
+
+    def _fake_request(method, path, **kwargs):
+        captured["method"] = method
+        captured["path"] = path
+        captured["json"] = kwargs.get("json")
+        return _FakeResponse({"data": {"id": 725660480}})
+
+    monkeypatch.setattr(clio_client, "clio_request", _fake_request)
+
+    result = clio_matters.clio_create_relationship(1573649315, 2575659425, "Witness")
+
+    assert result == 725660480
+    assert captured["method"] == "POST"
+    assert captured["path"] == "/relationships.json"
+    assert captured["json"] == {
+        "data": {
+            "description": "Witness",
+            "contact": {"id": 2575659425},
+            "matter": {"id": 1573649315},
+        }
+    }
