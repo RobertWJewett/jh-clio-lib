@@ -19,6 +19,9 @@ class _FakeResponse:
     def getheader(self, name):
         return self._headers.get(name)
 
+    def getheaders(self):
+        return list(self._headers.items())
+
 
 class _FakeConn:
     """Queue of responses/exceptions returned by successive getresponse() calls —
@@ -163,3 +166,38 @@ def test_clio_braces_get_gives_up_after_max_attempts(monkeypatch):
         assert False, "expected RuntimeError"
     except RuntimeError as e:
         assert "503" in str(e)
+
+
+def test_clio_braces_get_403_error_includes_headers_and_egress_ip(monkeypatch):
+    """Clio's intermittent bare-HTML 403 (2026-10): the error must carry the response headers (minus
+    Set-Cookie) and our outbound IP so the failure can be reported to Clio."""
+    monkeypatch.setattr(clio_auth, "get_clio_token", lambda: "tok")
+    monkeypatch.setattr(clio_client, "_egress_ip", lambda: "203.0.113.7")
+    _FakeConn.queue = [_FakeResponse(
+        403, body=b"<html><head><title>403 Forbidden</title></head></html>",
+        headers={"Server": "nginx", "X-Request-Id": "r1", "Set-Cookie": "s=1"})]
+    monkeypatch.setattr(http.client, "HTTPSConnection", _FakeConn)
+
+    try:
+        clio_client.clio_braces_get("/matters.json?limit=1")
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        msg = str(exc)
+    assert msg.startswith("Clio GET /matters.json?limit=1 -> 403: ")   # original prefix preserved
+    assert "Server: nginx" in msg and "X-Request-Id: r1" in msg
+    assert "Set-Cookie" not in msg
+    assert "egress_ip: 203.0.113.7" in msg
+
+
+def test_clio_braces_get_non_403_error_message_unchanged(monkeypatch):
+    monkeypatch.setattr(clio_auth, "get_clio_token", lambda: "tok")
+    monkeypatch.setattr(clio_client, "_egress_ip", lambda: (_ for _ in ()).throw(AssertionError("no IP lookup")))
+    _FakeConn.queue = [_FakeResponse(422, body=b'{"error": "bad"}')]
+    monkeypatch.setattr(http.client, "HTTPSConnection", _FakeConn)
+
+    try:
+        clio_client.clio_braces_get("/documents.json")
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert str(exc) == "Clio GET /documents.json -> 422: b'{\"error\": \"bad\"}'"
+

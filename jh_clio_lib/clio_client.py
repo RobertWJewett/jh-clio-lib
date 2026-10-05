@@ -17,6 +17,31 @@ from jh_clio_lib import clio_auth, config
 _MAX_ATTEMPTS = 4
 _RETRYABLE_STATUS = {429, 502, 503, 504}
 
+_EGRESS_IP_CACHE = {"ip": None, "at": 0.0}
+
+
+def _egress_ip() -> str:
+    """This process's current outbound public IP as seen by an external echo service (cached 10 min,
+    3 s timeout). Only called when Clio answers 403 -- added 2026-10-05 for the open Clio support
+    ticket about its intermittent bare-HTML 403 to Google Cloud Run traffic, where Clio will ask which
+    source address is being refused (Cloud Run egress addresses are shared and dynamic)."""
+    now = time.time()
+    if _EGRESS_IP_CACHE["ip"] and now - _EGRESS_IP_CACHE["at"] < 600:
+        return _EGRESS_IP_CACHE["ip"]
+    try:
+        ip = requests.get("https://api.ipify.org", timeout=3).text.strip()
+    except Exception as exc:
+        ip = f"unknown ({type(exc).__name__})"
+    _EGRESS_IP_CACHE.update(ip=ip, at=now)
+    return ip
+
+
+def _forbidden_context(headers) -> str:
+    """ALL response headers (minus Set-Cookie) plus our outbound IP, appended to a 403 error so the log
+    and alert show which layer (CDN / WAF / web server) refused the request."""
+    hdrs = "; ".join(f"{k}: {v}" for k, v in headers if str(k).lower() != "set-cookie")
+    return f" | headers: {hdrs} | egress_ip: {_egress_ip()}"
+
 
 def clio_braces_get(path_with_query: str, *, _retry: bool = True) -> dict:
     """GET via http.client directly — `requests` percent-encodes `{`/`}`, which Clio's
@@ -41,6 +66,7 @@ def clio_braces_get(path_with_query: str, *, _retry: bool = True) -> dict:
                 body = resp.read()
                 status = resp.status
                 retry_after = resp.getheader("Retry-After")
+                resp_headers = resp.getheaders()
             except OSError:
                 if attempt < _MAX_ATTEMPTS - 1:
                     time.sleep(2 ** attempt)
@@ -56,7 +82,10 @@ def clio_braces_get(path_with_query: str, *, _retry: bool = True) -> dict:
             time.sleep(float(retry_after) if retry_after else 2 ** attempt)
             continue
         if status >= 400:
-            raise RuntimeError(f"Clio GET {path_with_query} -> {status}: {body[:500]!r}")
+            msg = f"Clio GET {path_with_query} -> {status}: {body[:500]!r}"
+            if status == 403:
+                msg += _forbidden_context(resp_headers)
+            raise RuntimeError(msg)
         return json.loads(body)
 
 
