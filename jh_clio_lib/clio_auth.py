@@ -70,7 +70,31 @@ def _store_tokens(access_token: str, refresh_token: str) -> None:
         print(f"WARNING: could not write refreshed Clio token back to Firestore: {exc}")
 
 
+# ---------------------------------------------------------------------------
+# Token-broker mode (2026-10-06): a host OUTSIDE Google Cloud (e.g. a Railway standby job) cannot reach
+# Firestore without a Google credential. Instead it asks a small authenticated endpoint on email-processor
+# for the current ACCESS token only -- never the refresh token, and nothing is ever written back. Enabled
+# only when BOTH CLIO_TOKEN_BROKER_URL and CLIO_TOKEN_BROKER_KEY are set; otherwise behavior is unchanged.
+# ---------------------------------------------------------------------------
+
+def _broker_configured() -> bool:
+    return bool(config.get("CLIO_TOKEN_BROKER_URL") and config.get("CLIO_TOKEN_BROKER_KEY"))
+
+
+def _broker_tokens() -> dict:
+    resp = requests.get(config.get("CLIO_TOKEN_BROKER_URL"),
+                        headers={"X-Broker-Key": config.get("CLIO_TOKEN_BROKER_KEY")}, timeout=15)
+    if resp.status_code != 200:
+        raise ClioAuthError(f"Clio token broker returned HTTP {resp.status_code}")
+    access = (resp.json() or {}).get("access_token", "")
+    if not access:
+        raise ClioAuthError("Clio token broker returned no access_token")
+    return {"access_token": access, "refresh_token": ""}
+
+
 def get_tokens() -> dict:
+    if _broker_configured():
+        return _broker_tokens()
     try:
         tokens = _firestore_tokens()
         if tokens.get("access_token"):
@@ -93,7 +117,12 @@ def get_clio_token() -> str:
 
 def refresh_clio_token() -> str:
     """Exchange the stored refresh_token for a fresh access_token. Ported from
-    email-processor/main.py:_refresh_clio_manage_token()."""
+    email-processor/main.py:_refresh_clio_manage_token().
+
+    In broker mode there is no refresh token here (by design): this just re-fetches the broker's current
+    access token, which picks up a refresh done elsewhere (the Cloud Run side owns refreshing)."""
+    if _broker_configured():
+        return _broker_tokens()["access_token"]
     tokens = get_tokens()
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:

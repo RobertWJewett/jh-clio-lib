@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 import responses
 
 from jh_clio_lib import clio_auth, config
@@ -66,3 +67,39 @@ def test_refresh_clio_token_raises_without_client_credentials(fake_firestore, mo
         assert False, "expected ClioAuthError"
     except ClioAuthError:
         pass
+
+
+# --- token-broker mode (2026-10-06) ---------------------------------------------------------------
+
+@responses.activate
+def test_broker_mode_returns_access_token_only(monkeypatch):
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_URL", "https://broker.example/clio-token-broker")
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_KEY", "k")
+    responses.add(responses.GET, "https://broker.example/clio-token-broker",
+                  json={"access_token": "ACCESS", "updated_at": "x"}, status=200)
+
+    assert clio_auth.get_clio_token() == "ACCESS"
+    assert clio_auth.get_tokens()["refresh_token"] == ""
+    assert responses.calls[0].request.headers["X-Broker-Key"] == "k"
+
+
+@responses.activate
+def test_broker_mode_wrong_key_raises(monkeypatch):
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_URL", "https://broker.example/clio-token-broker")
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_KEY", "bad")
+    responses.add(responses.GET, "https://broker.example/clio-token-broker", status=404)
+
+    with pytest.raises(ClioAuthError):
+        clio_auth.get_clio_token()
+
+
+@responses.activate
+def test_broker_mode_refresh_only_refetches_never_posts(monkeypatch):
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_URL", "https://broker.example/clio-token-broker")
+    monkeypatch.setenv("CLIO_TOKEN_BROKER_KEY", "k")
+    responses.add(responses.GET, "https://broker.example/clio-token-broker",
+                  json={"access_token": "NEW"}, status=200)
+
+    assert clio_auth.refresh_clio_token() == "NEW"
+    assert all(c.request.method == "GET" for c in responses.calls)   # no OAuth refresh grant, no writes
+
